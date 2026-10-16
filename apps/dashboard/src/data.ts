@@ -52,9 +52,9 @@ export type User = {
   y: number;
   rsrp: number;
   sinr: number;
-  mcs: number;
-  rank: number;
-  ibler: number;
+  mcs: number | null;
+  rank: number | null;
+  ibler: number | null;
   throughput: number;
   samples: Sample[];
 };
@@ -105,11 +105,11 @@ export function generate(config: Config, index: number): Run {
       y: r * Math.sin(angle),
       rsrp: -65 - r * 0.075 + (random() - 0.5) * 6,
       sinr: mean(samples.map((s) => s.sinr)),
-      mcs: mean(active.map((s) => s.mcs)),
-      rank: mean(active.map((s) => s.rank)),
+      mcs: active.length ? mean(active.map((s) => s.mcs)) : null,
+      rank: active.length ? mean(active.map((s) => s.rank)) : null,
       ibler: active.length
         ? (active.filter((s) => s.error).length / active.length) * 100
-        : 0,
+        : null,
       throughput: mean(samples.map((s) => s.throughput)),
       samples,
     };

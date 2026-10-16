@@ -14,7 +14,9 @@ import {
   Check,
   RotateCcw,
 } from "lucide-react";
-import Plotly from "plotly.js-dist-min";
+import { Chart } from "./Chart";
+import { Comparison } from "./Comparison";
+import { average, colorFor } from "./comparisonStats";
 import {
   Config,
   defaults,
@@ -28,60 +30,6 @@ import {
 import "./style.css";
 
 const colors = ["#47dfca", "#6e9dff", "#d59bff", "#ffbc70"];
-function Chart({
-  data,
-  title,
-  height = 290,
-  layout = {},
-}: {
-  data: unknown[];
-  title: string;
-  height?: number;
-  layout?: Record<string, unknown>;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = ref.current!;
-    Plotly.react(
-      el,
-      data,
-      {
-        height,
-        margin: { l: 54, r: 20, t: 22, b: 48 },
-        paper_bgcolor: "transparent",
-        plot_bgcolor: "transparent",
-        font: {
-          color: "#91a5b9",
-          family: "Inter, Microsoft YaHei, sans-serif",
-          size: 11,
-        },
-        colorway: colors,
-        xaxis: { gridcolor: "#213143", zerolinecolor: "#304153" },
-        yaxis: { gridcolor: "#213143", zerolinecolor: "#304153" },
-        legend: { orientation: "h", y: 1.15 },
-        ...layout,
-      },
-      {
-        responsive: true,
-        displaylogo: false,
-        modeBarButtonsToRemove: ["lasso2d", "select2d"],
-        toImageButtonOptions: { format: "png", filename: title, scale: 2 },
-      },
-    );
-    const observer = new ResizeObserver(() => Plotly.Plots.resize(el));
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [data, height, layout, title]);
-  useEffect(
-    () => () => {
-      if (ref.current) Plotly.purge(ref.current);
-    },
-    [],
-  );
-  return (
-    <div ref={ref} aria-label={title} style={{ width: "100%", minWidth: 0 }} />
-  );
-}
 function Panel({
   title,
   tag,
@@ -235,7 +183,8 @@ function App() {
       data={(compare ? runs : [run]).map((r, i) => {
         const values = r.users
           .filter((u) => !cell || u.cell === cell)
-          .map((u) => u[metric as keyof User] as number)
+          .map((u) => u[metric as keyof User] as number | null)
+          .filter((v): v is number => v !== null)
           .sort((a, b) => a - b);
         return {
           x: values,
@@ -243,7 +192,7 @@ function App() {
           type: "scatter",
           mode: "lines",
           name: r.name,
-          line: { color: colors[i % 4], width: 2.5, shape: "hv" },
+          line: { color: colorFor(runs.indexOf(r)), width: 2.5, shape: "hv" },
         };
       })}
       layout={{
@@ -365,7 +314,7 @@ function App() {
       "\uFEFF" +
         [
           keys.join(","),
-          ...filtered.map((u) => keys.map((k) => u[k]).join(",")),
+          ...filtered.map((u) => keys.map((k) => u[k] ?? "").join(",")),
         ].join("\n"),
       "text/csv;charset=utf-8",
     );
@@ -412,8 +361,8 @@ function App() {
             <Radio size={25} />
           </div>
           <div>
-            ARRAY<span>LAB</span>
-            <small>AAU SYSTEM DESIGN STUDIO</small>
+            Prisma
+            <small>无线系统自动化设计平台</small>
           </div>
         </div>
         <nav>
@@ -431,6 +380,13 @@ function App() {
             <Activity size={17} />
             系统仿真
           </button>
+          <button
+            className={tab === "compare" ? "active" : ""}
+            onClick={() => setTab("compare")}
+          >
+            <Layers size={17} />
+            方案对比
+          </button>
         </nav>
         <div className="env">
           <i />
@@ -441,16 +397,26 @@ function App() {
         <div>
           <div className="eyebrow">
             DESIGN /{" "}
-            {tab === "system" ? "SYSTEM SIMULATION" : "ANTENNA EXPLORER"}
+            {tab === "compare"
+              ? "EXPERIMENT COMPARISON"
+              : tab === "system"
+                ? "SYSTEM SIMULATION"
+                : "ANTENNA EXPLORER"}
           </div>
           <h1>
-            {tab === "system" ? "系统仿真工作台" : "探索你的阵面设计"}
+            {tab === "compare"
+              ? "多方案对比"
+              : tab === "system"
+                ? "系统仿真工作台"
+                : "探索你的阵面设计"}
             <span className="badge">示例数据</span>
           </h1>
           <p>
-            {tab === "system"
-              ? "从天面架构到无线性能，让每一个设计决策有迹可循。"
-              : "连接物理阵子与数字通道，交互观察波束与阵列形态。"}
+            {tab === "compare"
+              ? "对齐配置差异，比较多种设计方案的性能表现。"
+              : tab === "system"
+                ? "从天面架构到无线性能，让每一个设计决策有迹可循。"
+                : "连接物理阵子与数字通道，交互观察波束与阵列形态。"}
           </p>
         </div>
         <div className="toolbar">
@@ -478,7 +444,18 @@ function App() {
           />
         </div>
       </div>
-      <main>
+      <div hidden={tab !== "compare"}>
+        <Comparison
+          runs={runs}
+          rename={(id, name) =>
+            setRuns((items) =>
+              items.map((r) => (r.id === id ? { ...r, name } : r)),
+            )
+          }
+          onGenerate={() => setTab("system")}
+        />
+      </div>
+      <main style={{ display: tab === "compare" ? "none" : undefined }}>
         <aside>
           <div className="sidebar-heading">
             <SlidersHorizontal size={17} />
@@ -638,7 +615,7 @@ function App() {
                   ],
                   [
                     "首次传输错误率",
-                    mean(filtered.map((u) => u.ibler)).toFixed(1),
+                    average(filtered.map((u) => u.ibler))?.toFixed(1) ?? "—",
                     "%",
                     "IBLER · 用户均值",
                   ],
@@ -913,7 +890,9 @@ function App() {
                                     ? `UE ${String(v).padStart(2, "0")}`
                                     : i === 1
                                       ? `Cell ${v}`
-                                      : v.toFixed(1)}
+                                      : v === null
+                                        ? "—"
+                                        : v.toFixed(1)}
                                 </td>
                               ))}
                             </tr>
@@ -1125,7 +1104,7 @@ function App() {
       </main>
       <footer className="app-footer">
         <span>
-          <TowerControl size={13} /> ARRAY LAB / SIONNA WORKSPACE
+          <TowerControl size={13} /> PRISMA / 无线系统自动化设计平台
         </span>
         <span>交互原型 · 本地运行 · 所有系统结果均为示例</span>
       </footer>
